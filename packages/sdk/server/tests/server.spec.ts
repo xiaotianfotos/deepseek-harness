@@ -209,6 +209,74 @@ describe('HarnessSdkJsonRpcServer', () => {
     expect(otherHandle.dispose).toHaveBeenCalledOnce()
   })
 
+  it('steers the next step and accepts cancellation only for a running session', async () => {
+    const steer = vi.fn<Agent['steer']>()
+    const cancel = vi.fn<Agent['cancel']>()
+    let status: Agent['status'] = 'running'
+    const agent = ({
+      id: SessionId('controlled'),
+      get status() { return status },
+      steer,
+      cancel,
+    } satisfies Pick<Agent, 'id' | 'status' | 'steer' | 'cancel'>) as unknown as Agent
+    const handle = { agent, dispose: vi.fn(() => Promise.resolve()) }
+    const ctx = {
+      on: vi.fn(() => () => undefined),
+      agents: { create: vi.fn(async () => handle), get: () => agent },
+      get: () => undefined,
+    } as unknown as Context
+    const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport())
+
+    const receipt = await server.handleRequest('session/steer', {
+      sessionId: 'controlled',
+      contentBlocks: [{ type: 'text', text: 'change direction' }],
+    }) as { messageId: string }
+    expect(receipt.messageId).toBeTypeOf('string')
+    expect(steer).toHaveBeenCalledOnce()
+    expect(await server.handleRequest('session/cancel', { sessionId: 'controlled' }))
+      .toEqual({ accepted: true })
+    expect(cancel).toHaveBeenCalledWith({ kind: 'user' })
+
+    status = 'idle'
+    expect(await server.cancel({ sessionId: 'controlled' })).toEqual({ accepted: false })
+    expect(await server.cancel({ sessionId: 'unknown' })).toEqual({ accepted: false })
+    expect(cancel).toHaveBeenCalledOnce()
+
+    await server.shutdown()
+    await expect(server.cancel({ sessionId: 'controlled' })).rejects.toThrow('SDK server is shutting down')
+  })
+
+  it('waits for an in-flight session creation before cancelling it', async () => {
+    const steer = vi.fn<Agent['steer']>()
+    const cancel = vi.fn<Agent['cancel']>()
+    const agent = ({
+      id: SessionId('pending'),
+      status: 'running',
+      steer,
+      cancel,
+    } satisfies Pick<Agent, 'id' | 'status' | 'steer' | 'cancel'>) as unknown as Agent
+    const handle = { agent, dispose: vi.fn(() => Promise.resolve()) }
+    const creation = Promise.withResolvers<typeof handle>()
+    const ctx = {
+      on: vi.fn(() => () => undefined),
+      agents: { create: vi.fn(() => creation.promise), get: () => agent },
+      get: () => undefined,
+    } as unknown as Context
+    const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport())
+
+    const steering = server.steer({
+      sessionId: 'pending',
+      contentBlocks: [{ type: 'text', text: 'redirect' }],
+    })
+    const cancelling = server.cancel({ sessionId: 'pending' })
+    creation.resolve(handle)
+
+    expect((await steering).messageId).toBeTypeOf('string')
+    await expect(cancelling).resolves.toEqual({ accepted: true })
+    expect(cancel).toHaveBeenCalledWith({ kind: 'user' })
+    await server.shutdown()
+  })
+
   it('rejects a prompt for a session whose agent was disposed outside the server', async () => {
     const followup = vi.fn<Agent['followup']>()
     const agent = ({

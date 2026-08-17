@@ -126,6 +126,15 @@ describe('DeepSeekHarness', () => {
     await harness.close()
   })
 
+  it('steers and cancels a named session through the high-level handle', async () => {
+    const harness = harnessWith()
+    const session = harness.session('controlled')
+
+    await expect(session.steer('change direction')).resolves.toMatch(/^fake-steer-/)
+    await expect(session.cancel()).resolves.toBe(true)
+    await harness.close()
+  })
+
   it('keeps events root-scoped while streaming notifications for the session tree', async () => {
     const harness = harnessWith({ FAKE_SUBAGENT: '1' })
     const seen: HarnessNotification[] = []
@@ -208,6 +217,16 @@ describe('DeepSeekHarness', () => {
     await expect(harness.run('later')).rejects.toThrow()
   })
 
+  it('does not replace the runtime when close races a failed handshake', async () => {
+    const harness = harnessWith({ FAKE_INIT_ERROR: '1' })
+    const failedClient = harness.client
+    const starting = harness.start()
+    await harness.close()
+
+    await expect(starting).rejects.toThrow('scripted init failure')
+    expect(harness.client).toBe(failedClient)
+  })
+
   it('retries a failed handshake with a fresh runtime process', async () => {
     const dir = await tempDir('sdk-client-retry-')
     const marker = join(dir, 'first-boot-failed')
@@ -281,6 +300,18 @@ describe('HarnessClient', () => {
     cleanups.push(() => client.close())
     await expect(client.prompt('s', normalizeInput('hi'))).rejects.toThrow(SdkProtocolError)
     await client.close()
+  })
+
+  it('rejects malformed steer and cancel receipts as protocol errors', async () => {
+    const malformedSteer = new HarnessClient(fakeLaunch({ FAKE_MALFORMED_STEER: '1' }))
+    cleanups.push(() => malformedSteer.close())
+    await expect(malformedSteer.steer('s', normalizeInput('redirect'))).rejects.toThrow(SdkProtocolError)
+    await malformedSteer.close()
+
+    const malformedCancel = new HarnessClient(fakeLaunch({ FAKE_MALFORMED_CANCEL: '1' }))
+    cleanups.push(() => malformedCancel.close())
+    await expect(malformedCancel.cancel('s')).rejects.toThrow(SdkProtocolError)
+    await malformedCancel.close()
   })
 
   it('fails pending requests with exit code and stderr tail when the runtime dies', async () => {

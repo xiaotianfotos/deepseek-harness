@@ -154,6 +154,18 @@ class HarnessClient:
         )
         return response.messageId
 
+    def session_steer(self, session_id: str, content_blocks: list[JsonObject]) -> str:
+        """Queue a same-turn interjection and return its durable message id."""
+        payload: JsonObject = {"sessionId": session_id, "contentBlocks": content_blocks}
+        response = self.request("session/steer", payload, response_model=_SessionSteerResponse)
+        return response.messageId
+
+    def session_cancel(self, session_id: str) -> bool:
+        """Request cooperative cancellation and report whether a running session accepted it."""
+        payload: JsonObject = {"sessionId": session_id}
+        response = self.request("session/cancel", payload, response_model=_SessionCancelResponse)
+        return response.accepted
+
     def request(
         self,
         method: str,
@@ -547,6 +559,14 @@ class NotificationSubscription:
 
 class _SessionPromptResponse(BaseModel):
     messageId: str
+
+
+class _SessionSteerResponse(BaseModel):
+    messageId: str
+
+
+class _SessionCancelResponse(BaseModel):
+    accepted: bool
 
 
 class _ShutdownResponse(BaseModel):

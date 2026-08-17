@@ -3,8 +3,7 @@
  * Scripted stand-in for the DeepSeek Harness SDK runtime, driven entirely by
  * env vars — no model, no network, no harness imports. Speaks the runtime's
  * newline-delimited JSON-RPC protocol on stdio: answers `initialize`,
- * `session/prompt` (streaming scripted `session.event` notifications, then
- * `session.finished`, then the response), and `shutdown`.
+ * `session/prompt`, `session/steer`, `session/cancel`, and `shutdown`.
  *
  * Script vocabulary (all optional):
  * - `FAKE_TEXT`: assistant text for each turn (default `hello from fake runtime`).
@@ -15,6 +14,8 @@
  * - `FAKE_ECHO_ENV`: comma-separated env names to echo as `name=value` lines in the assistant text.
  * - `FAKE_MALFORMED`: `initialize` returns `{}` (no serverInfo); `prompt` returns `{}` (no accepted).
  * - `FAKE_MALFORMED_PROMPT`: `initialize` is normal; only `prompt` returns `{}` (no accepted).
+ * - `FAKE_MALFORMED_STEER`: `session/steer` returns `{}` (no message id).
+ * - `FAKE_MALFORMED_CANCEL`: `session/cancel` returns `{}` (no acceptance flag).
  * - `FAKE_INIT_ERROR`: `initialize` answers a JSON-RPC error response with code 7.
  * - `FAKE_INIT_ERROR_ONCE_FILE`: fail `initialize` (code 7) only when this
  *   marker file does NOT exist yet, creating it — so the first runtime
@@ -222,6 +223,29 @@ reader.on('line', (line) => {
       respond({ messageId })
       return
     }
+    case 'session/steer': {
+      if (env.FAKE_MALFORMED_STEER !== undefined) {
+        respond({})
+        return
+      }
+      const sessionId = sessionIdOf(frame.params)
+      const messageId = `fake-steer-${seq}`
+      event(sessionId, 'agent/inbox/spliced', {
+        target: 'next-step',
+        start: 0,
+        inserted: [{
+          id: messageId,
+          role: 'user',
+          content: [],
+          source: { kind: 'user' },
+        }],
+      })
+      respond({ messageId })
+      return
+    }
+    case 'session/cancel':
+      respond(env.FAKE_MALFORMED_CANCEL === undefined ? { accepted: true } : {})
+      return
     case 'shutdown':
       respond({})
       // An EOF-ignoring fake also refuses the protocol exit, so the client's

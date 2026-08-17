@@ -18,8 +18,12 @@ export type {
   SdkRunStatus,
   SessionEventNotification,
   SessionStatusNotification,
+  SessionCancelParams,
+  SessionCancelResult,
   SessionPromptParams,
   SessionPromptResult,
+  SessionSteerParams,
+  SessionSteerResult,
   SubagentFinishedNotification,
   SubagentStartedNotification,
 } from './types.ts'

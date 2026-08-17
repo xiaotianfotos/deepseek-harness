@@ -163,6 +163,34 @@ for line in sys.stdin:
     assert result.finish_reason is None
 
 
+def test_session_steers_and_cancels_through_the_runtime(tmp_path: Path) -> None:
+    script = tmp_path / "fake_runtime.py"
+    script.write_text(
+        """
+import json
+import sys
+
+for line in sys.stdin:
+    msg = json.loads(line)
+    method = msg.get("method")
+    if method == "initialize":
+        print(json.dumps({"jsonrpc": "2.0", "id": msg["id"], "result": {"serverInfo": {"name": "fake-runtime"}}}), flush=True)
+    elif method == "session/steer":
+        print(json.dumps({"jsonrpc": "2.0", "id": msg["id"], "result": {"messageId": "steer-1"}}), flush=True)
+    elif method == "session/cancel":
+        print(json.dumps({"jsonrpc": "2.0", "id": msg["id"], "result": {"accepted": True}}), flush=True)
+    elif method == "shutdown":
+        print(json.dumps({"jsonrpc": "2.0", "id": msg["id"], "result": {}}), flush=True)
+        break
+""".strip()
+    )
+
+    with DeepSeekHarness(launch_args_override=(sys.executable, str(script)), cwd=str(tmp_path)) as harness:
+        session = harness.start_session("main")
+        assert session.steer("change direction") == "steer-1"
+        assert session.cancel() is True
+
+
 def test_high_level_sdk_rejects_turn_end_without_reason_kind(tmp_path: Path) -> None:
     script = tmp_path / "fake_runtime.py"
     script.write_text(

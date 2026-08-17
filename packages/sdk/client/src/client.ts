@@ -18,7 +18,9 @@ import {
   JsonRpcResponseError,
   type InitializeParams,
   type InitializeResult,
+  type SessionCancelParams,
   type SessionPromptParams,
+  type SessionSteerParams,
 } from '@deepseek-ai/dsh-sdk-protocol'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { disposeRuntimeProcess } from './dispose.ts'
@@ -54,7 +56,7 @@ export class RequestTimeoutError extends Error {
 
 /**
  * The runtime answered outside its documented protocol (for example a
- * `session/prompt` response without `accepted: true`).
+ * `session/prompt` response without a message id).
  */
 export class SdkProtocolError extends Error {
   /** @param message - the protocol violation description. */
@@ -287,6 +289,35 @@ export class HarnessClient {
       throw new SdkProtocolError(`session/prompt returned no message id: ${JSON.stringify(result)}`)
     }
     return result.messageId
+  }
+
+  /**
+   * Queue one same-turn interjection and return its durable inbox identity.
+   * @param sessionId - target session; an unknown id creates it.
+   * @param contentBlocks - steering content sent verbatim as one user message.
+   * @returns the queued message id.
+   */
+  async steer(sessionId: string, contentBlocks: ContentBlock[]): Promise<string> {
+    const params: SessionSteerParams = { sessionId, contentBlocks }
+    const result = await this.request('session/steer', { ...params })
+    if (!isRecord(result) || typeof result.messageId !== 'string') {
+      throw new SdkProtocolError(`session/steer returned no message id: ${JSON.stringify(result)}`)
+    }
+    return result.messageId
+  }
+
+  /**
+   * Request cooperative cancellation of one active session turn.
+   * @param sessionId - target session.
+   * @returns whether the runtime found a running session and requested cancellation.
+   */
+  async cancel(sessionId: string): Promise<boolean> {
+    const params: SessionCancelParams = { sessionId }
+    const result = await this.request('session/cancel', { ...params })
+    if (!isRecord(result) || typeof result.accepted !== 'boolean') {
+      throw new SdkProtocolError(`session/cancel returned no acceptance flag: ${JSON.stringify(result)}`)
+    }
+    return result.accepted
   }
 
   /**

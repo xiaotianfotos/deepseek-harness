@@ -18,9 +18,13 @@ import type {
   InitializeParams,
   InitializeResult,
   JsonRpcTransportPeer,
+  SessionCancelParams,
+  SessionCancelResult,
   SessionEventNotification,
   SessionPromptParams,
   SessionPromptResult,
+  SessionSteerParams,
+  SessionSteerResult,
   SubagentFinishedNotification,
   SubagentStartedNotification,
 } from '@deepseek-ai/dsh-sdk-protocol'
@@ -131,15 +135,41 @@ export class HarnessSdkJsonRpcServer {
    */
   async prompt(params: SessionPromptParams): Promise<SessionPromptResult> {
     const rec = await this.getOrCreateSession(params.sessionId)
-    // An agent-loop-only reload disposes the loop's agents while this record
-    // survives; a retained agent accepts followup() silently, so validate the
-    // record against the live registry before delivery (as the ACP bridge does).
-    if (this.ctx.agents.get(rec.handle.agent.id) !== rec.handle.agent) {
-      throw new Error(`session agent was disposed outside the server: ${params.sessionId}`)
-    }
+    this.assertLiveSession(rec, params.sessionId)
     const message = createUserMessage({ content: params.contentBlocks, source: { kind: 'user' } })
     rec.handle.agent.followup(message)
     return { messageId: message.id }
+  }
+
+  /**
+   * Queue one identified user message for the nearest later step and wake the
+   * agent. A running agent consumes it in the current turn; an idle agent opens
+   * a turn for it.
+   * @param params - target session and user content.
+   * @returns the durable message identity.
+   */
+  async steer(params: SessionSteerParams): Promise<SessionSteerResult> {
+    const rec = await this.getOrCreateSession(params.sessionId)
+    this.assertLiveSession(rec, params.sessionId)
+    const message = createUserMessage({ content: params.contentBlocks, source: { kind: 'user' } })
+    rec.handle.agent.steer(message)
+    return { messageId: message.id }
+  }
+
+  /**
+   * Request cooperative cancellation of one active session turn. Unknown and
+   * idle sessions return an unaccepted receipt without creating work.
+   * @param params - target session.
+   * @returns whether a running agent accepted the cancellation request.
+   */
+  async cancel(params: SessionCancelParams): Promise<SessionCancelResult> {
+    if (this.shuttingDown) throw new Error('SDK server is shutting down')
+    const rec = this.sessions.get(params.sessionId) ?? await this.sessionCreations.get(params.sessionId)
+    if (rec === undefined) return { accepted: false }
+    this.assertLiveSession(rec, params.sessionId)
+    if (rec.handle.agent.status !== 'running') return { accepted: false }
+    rec.handle.agent.cancel({ kind: 'user' })
+    return { accepted: true }
   }
 
   /**
@@ -193,6 +223,10 @@ export class HarnessSdkJsonRpcServer {
         return this.initialize(params as unknown as InitializeParams)
       case 'session/prompt':
         return this.prompt(params as unknown as SessionPromptParams)
+      case 'session/steer':
+        return this.steer(params as unknown as SessionSteerParams)
+      case 'session/cancel':
+        return this.cancel(params as unknown as SessionCancelParams)
       case 'shutdown':
         return this.shutdown()
       default:
@@ -232,6 +266,13 @@ export class HarnessSdkJsonRpcServer {
     const rec: SessionRecord = { handle }
     this.sessions.set(sessionId, rec)
     return rec
+  }
+
+  /** Reject delivery to a record detached by an agent-loop-only reload. */
+  private assertLiveSession(rec: SessionRecord, sessionId: string): void {
+    if (this.ctx.agents.get(rec.handle.agent.id) !== rec.handle.agent) {
+      throw new Error(`session agent was disposed outside the server: ${sessionId}`)
+    }
   }
 
   private hasAdapterFor(provider: string): boolean {
