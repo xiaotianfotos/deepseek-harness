@@ -1,0 +1,23 @@
+name: Reject external pull requests
+
+on:
+  pull_request_target:
+    types: [opened, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  close-external:
+    if: github.event.pull_request.user.login != 'xiaotianfotos'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close pull request from non-owner
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+        run: >-
+          gh pr close "$PR_NUMBER" --repo "$REPOSITORY"
+          --comment "This is an owner-maintained HomeRail integration fork and does not accept external pull requests. General contributions should be sent to the upstream repository."
