@@ -212,6 +212,18 @@ describe('serializeRequest', () => {
     expect(wire.reasoning_effort).toBe('max')
   })
 
+  it.each(['low', 'medium', 'xhigh'] as const)(
+    'passes the configured %s effort through to compatible deployments',
+    (effort) => {
+      const wire = serializeRequest(request({
+        messages: history,
+        reasoningEffort: ReasoningEffortId(effort),
+      }))
+      expect(wire.thinking).toEqual({ type: 'enabled' })
+      expect(wire.reasoning_effort).toBe(effort)
+    },
+  )
+
   it('maps off to disabled thinking without a wire reasoning effort', () => {
     const wire = serializeRequest(
       request({ messages: history, reasoningEffort: ReasoningEffortId('off') }),
@@ -262,10 +274,10 @@ describe('serializeRequest', () => {
     expect(wire.reasoning_effort).toBeUndefined()
   })
 
-  it('rejects an effort outside the DeepSeek capability', () => {
+  it('rejects an effort outside the configured chat-completions capability', () => {
     expect(() => serializeRequest(request({
       messages: history,
-      reasoningEffort: ReasoningEffortId('medium'),
+      reasoningEffort: ReasoningEffortId('ultra'),
     }))).toThrow(expect.objectContaining({ code: 'UNSUPPORTED_REASONING_EFFORT' }))
   })
 })

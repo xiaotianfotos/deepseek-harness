@@ -93,11 +93,25 @@ export const DEFAULT_CONTEXT_WINDOW = 1_000_000
 export const DEFAULT_MAX_TOKENS = 256_000
 const STREAM_IDLE_TIMEOUT_CODE = 'LLM_STREAM_IDLE_TIMEOUT'
 const OFF_REASONING_EFFORT = ReasoningEffortId('off')
+const LOW_REASONING_EFFORT = ReasoningEffortId('low')
+const MEDIUM_REASONING_EFFORT = ReasoningEffortId('medium')
 const HIGH_REASONING_EFFORT = ReasoningEffortId('high')
+const XHIGH_REASONING_EFFORT = ReasoningEffortId('xhigh')
 const MAX_REASONING_EFFORT = ReasoningEffortId('max')
+const REASONING_EFFORT_BY_NAME = {
+  off: OFF_REASONING_EFFORT,
+  low: LOW_REASONING_EFFORT,
+  medium: MEDIUM_REASONING_EFFORT,
+  high: HIGH_REASONING_EFFORT,
+  xhigh: XHIGH_REASONING_EFFORT,
+  max: MAX_REASONING_EFFORT,
+} as const
 const REASONING_EFFORTS = [
   { id: OFF_REASONING_EFFORT, name: 'Off' },
+  { id: LOW_REASONING_EFFORT, name: 'Low' },
+  { id: MEDIUM_REASONING_EFFORT, name: 'Medium' },
   { id: HIGH_REASONING_EFFORT, name: 'High' },
+  { id: XHIGH_REASONING_EFFORT, name: 'Extra High' },
   { id: MAX_REASONING_EFFORT, name: 'Max' },
 ] as const
 const OFF_ONLY_REASONING_EFFORTS = [
@@ -201,11 +215,9 @@ export class DeepSeekAdapter extends LlmAdapter {
         : {
           reasoning: {
             efforts: REASONING_EFFORTS,
-            defaultEffort: connection.defaults.reasoningEffort === 'off'
-              ? OFF_REASONING_EFFORT
-              : connection.defaults.reasoningEffort === 'max'
-                ? MAX_REASONING_EFFORT
-                : HIGH_REASONING_EFFORT,
+            defaultEffort: REASONING_EFFORT_BY_NAME[
+              connection.defaults.reasoningEffort ?? 'high'
+            ],
           },
         },
     })
