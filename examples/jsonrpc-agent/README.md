@@ -28,6 +28,12 @@ The surrounding runtime also loads JSONL session persistence and automatic conte
 
 Pass the config path through the Python SDK's `cordis` option or `DSH_CORDIS_CONFIG`. The bundled executable already carries every plugin named by this file; the target machine does not need Node.js.
 
+## HomeRail variant
+
+[`homerail.cordis.yml`](homerail.cordis.yml) is the isolated composition used by HomeRail's out-of-process adapter. It disables built-in shell, filesystem, Skills, and runtime-context projection, then connects exactly one turn-local stdio MCP proxy under the `homerail` namespace. HomeRail supplies the proxy script, a loopback-only bridge URL, and its random bearer token through `HOMERAIL_DSH_MCP_SCRIPT`, `HOMERAIL_MCP_BRIDGE_URL`, and `HOMERAIL_MCP_BRIDGE_TOKEN`; a missing or unreachable bridge fails startup.
+
+The HomeRail host also supplies `DSH_SYSTEM_PROMPT`, `DSH_CWD`, `DSH_MODEL`, and an isolated `DSH_SESSION_ROOT`. Source-tree development launches the generic `dsh-jsonrpc-agent` with this repository-owned config so workspace packages resolve here. A closed packaged runtime can load an equivalent external config because its installed runtime tree owns the plugin closure.
+
 ## Minimal variant
 
 [`minimal.cordis.yml`](minimal.cordis.yml) is the complete standalone counterpart of the Web `minimal` preset. `DSH_SYSTEM_PROMPT` selects its system prompt, with `You are a helpful software engineer assistant.` as the fallback. It suppresses every system-prompt runtime-context contribution for fresh sessions and mounts no context-compaction plugin. Its model-facing tools are exactly:

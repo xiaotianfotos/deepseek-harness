@@ -109,6 +109,36 @@ async function settleSubagent(
 }
 
 describe('HarnessSdkJsonRpcServer', () => {
+  it('holds initialize until sibling Loader entries settle', async () => {
+    const readiness = Promise.withResolvers<undefined>()
+    const loaderAwait = vi.fn(() => readiness.promise)
+    const ctx = {
+      on: vi.fn(() => () => undefined),
+      get: vi.fn((name: string) => {
+        if (name === 'loader') return { await: loaderAwait }
+        if (name === 'llm') return { listProviders: () => [{ id: 'already-mounted' }] }
+        return undefined
+      }),
+    } as unknown as Context
+    const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport())
+
+    const initialized = server.initialize({
+      cwd: '.',
+      provider: 'already-mounted',
+      model: 'ready-model',
+    })
+    let settled = false
+    void initialized.finally(() => { settled = true })
+    await vi.waitFor(() => { expect(loaderAwait).toHaveBeenCalledOnce() })
+    expect(settled).toBe(false)
+
+    readiness.resolve(undefined)
+    await expect(initialized).resolves.toMatchObject({
+      serverInfo: { name: 'deepseek-harness-sdk-runtime' },
+    })
+    await server.shutdown()
+  })
+
   it('creates a harness agent and calls the configured OpenAI-compatible endpoint', { timeout: 15_000 }, async () => {
     const storageDir = await mkdtemp(join(tmpdir(), 'dsh-jsonrpc-'))
     const llmServer = await mockCompletionServer()

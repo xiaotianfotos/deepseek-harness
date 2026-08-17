@@ -28,6 +28,12 @@
 
 通过 Python SDK 的 `cordis` 选项或 `DSH_CORDIS_CONFIG` 传入配置路径。内置可执行文件已携带此文件中指定的每个插件；目标机器无需 Node.js。
 
+## HomeRail 变体
+
+[`homerail.cordis.yml`](homerail.cordis.yml) 是 HomeRail 进程外适配器使用的隔离组合。它禁用内置 shell、文件系统、Skills 和运行时上下文投影，然后在 `homerail` 命名空间下仅连接一个轮次级 stdio MCP 代理。HomeRail 通过 `HOMERAIL_DSH_MCP_SCRIPT`、`HOMERAIL_MCP_BRIDGE_URL` 和 `HOMERAIL_MCP_BRIDGE_TOKEN` 提供代理脚本、仅监听 loopback 的桥接 URL 与随机 bearer token；桥接缺失或不可达会使启动失败。
+
+HomeRail host 还会提供 `DSH_SYSTEM_PROMPT`、`DSH_CWD`、`DSH_MODEL` 和隔离的 `DSH_SESSION_ROOT`。源码树开发模式使用此仓库拥有的配置启动通用 `dsh-jsonrpc-agent`，使 workspace 包在这里完成解析。封闭的打包运行时可以加载等价的外部配置，因为它安装后的运行时包树拥有完整插件闭包。
+
 ## 极简变体
 
 [`minimal.cordis.yml`](minimal.cordis.yml) 是 Web `minimal` preset 的完整独立版本。`DSH_SYSTEM_PROMPT` 选择它的系统提示词，未设置时使用 `You are a helpful software engineer assistant.`。它为新建会话抑制每个 system-prompt runtime-context 贡献，且不挂载上下文压缩插件。面向模型的工具严格只有：

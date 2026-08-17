@@ -32,6 +32,8 @@ Prompt, steering, and cancellation remain independent requests. The protocol doe
 
 SDK clients can redirect and stop active work while retaining the runtime and its other sessions. The wire gains two pre-release request/result pairs, both SDK implementations and their documentation move together, and clients still own activity intervals because neither operation supplies a prompt-level completion result.
 
+The HomeRail integration example keeps the control wire in a dedicated child process and imports its DAG tools through one authenticated loopback MCP proxy. That deployment disables ambient built-in tools and loads its composition from this owner-maintained fork during source-tree development. Because the stdio server may activate before asynchronous sibling plugins finish, `initialize` waits for Loader settlement; otherwise the first prompt can observe an empty MCP tool surface even though the composition later becomes complete.
+
 ## Testing
 
 Server tests pin next-step routing, live-agent validation, running-only cancellation, unknown-session behavior, and shutdown rejection. TypeScript and Python subprocess tests pin both client layers and malformed TypeScript receipts.
