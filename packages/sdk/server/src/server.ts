@@ -6,7 +6,6 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import type {} from '@deepseek-ai/cordis-plugin-loader'
 import { resolve } from 'node:path'
 import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
@@ -118,12 +117,6 @@ export class HarnessSdkJsonRpcServer {
       && (!Number.isSafeInteger(params.maxTokens) || params.maxTokens <= 0)) {
       throw new TypeError('initialize maxTokens must be a positive safe integer')
     }
-    // The stdio transport becomes reachable as soon as this plugin activates,
-    // while sibling Loader entries can still be starting. Hold the handshake
-    // until their async setup (notably MCP discovery) has settled so a client
-    // cannot create a first turn from a partial composition.
-    const loader = this.ctx.get('loader')
-    if (typeof loader?.await === 'function') await loader.await()
     this.cwd = resolve(params.cwd)
     this.provider = params.provider
     this.model = params.model
