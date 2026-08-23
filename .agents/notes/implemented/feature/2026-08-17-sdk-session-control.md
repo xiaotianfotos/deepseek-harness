@@ -10,7 +10,7 @@ The agent interface supports same-turn steering and cooperative cancellation, bu
 
 ## Decision
 
-The SDK protocol exposes `session/steer` and `session/cancel` without changing the [agent control operations](../../../../packages/core/agent/README.md#agent-interface-typests). The JSON-RPC server routes accepted steering to `agent.steer()` and accepted cancellation to `agent.cancel({ kind: 'user' })`; the TypeScript and Python SDKs expose matching low- and high-level methods.
+The SDK protocol exposes `session/steer` and `session/cancel` without changing the [agent control operations](../../../../packages/core/agent/README.md). The JSON-RPC server routes accepted steering to `agent.steer()` and accepted cancellation to `agent.cancel({ kind: 'user' })`; the TypeScript and Python SDKs expose matching low- and high-level methods.
 
 ## Wire semantics
 

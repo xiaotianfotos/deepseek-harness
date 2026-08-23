@@ -10,7 +10,7 @@ agent 接口支持同轮次 steering（中途引导）和协作式取消，但�
 
 ## 决策
 
-SDK 协议在不改变 [agent 控制操作](../../../../packages/core/agent/README.md#agent-interface-typests)的情况下暴露 `session/steer` 与 `session/cancel`。JSON-RPC 服务器将获接受的 steering 路由到 `agent.steer()`，将获接受的取消路由到 `agent.cancel({ kind: 'user' })`；TypeScript 与 Python SDK 暴露对应的低层和高层方法。
+SDK 协议在不改变 [agent 控制操作](../../../../packages/core/agent/README.zh.md)的情况下暴露 `session/steer` 与 `session/cancel`。JSON-RPC 服务器将获接受的 steering 路由到 `agent.steer()`，将获接受的取消路由到 `agent.cancel({ kind: 'user' })`；TypeScript 与 Python SDK 暴露对应的低层和高层方法。
 
 ## 协议语义
 
