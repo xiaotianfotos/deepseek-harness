@@ -135,6 +135,15 @@ describe('DeepSeekHarness', () => {
     await harness.close()
   })
 
+  it('steers and cancels through a session handle', async () => {
+    const harness = harnessWith()
+    const session = harness.session('controlled')
+
+    await expect(session.steer('change direction')).resolves.toMatch(/^fake-steer-/)
+    await expect(session.cancel()).resolves.toBe(true)
+    await harness.close()
+  })
+
   it('keeps events root-scoped while streaming notifications for the session tree', async () => {
     const harness = harnessWith({ FAKE_SUBAGENT: '1' })
     const seen: HarnessNotification[] = []
@@ -301,6 +310,18 @@ describe('DeepSeekHarness', () => {
 })
 
 describe('HarnessClient', () => {
+  it('rejects malformed steering and cancellation receipts', async () => {
+    const malformedSteer = processClient(fakeLaunch({ FAKE_MALFORMED_STEER: '1' }))
+    cleanups.push(() => malformedSteer.close())
+    await expect(malformedSteer.steer('s', normalizeInput('redirect'))).rejects.toThrow(SdkProtocolError)
+    await malformedSteer.close()
+
+    const malformedCancel = processClient(fakeLaunch({ FAKE_MALFORMED_CANCEL: '1' }))
+    cleanups.push(() => malformedCancel.close())
+    await expect(malformedCancel.cancel('s')).rejects.toThrow(SdkProtocolError)
+    await malformedCancel.close()
+  })
+
   it('bounds profile initialization and names the selected profile in its diagnostic', async () => {
     const client = processClient(fakeLaunch(
       { FAKE_HANG_INIT: '1' },
@@ -584,6 +605,13 @@ describe('wire payload validation', () => {
   it.each(['1', 'aborted', 'abort-unknown', 'hook', 'no-data'])('rejects malformed turn/end input %s as a protocol error', async (mode) => {
     const harness = harnessWith({ FAKE_MALFORMED_REASON: mode })
     await expect(harness.run('bad-reason')).rejects.toThrow(SdkProtocolError)
+  })
+
+  it.each(['user', 'parent', 'disposed', 'legacy'])('accepts the %s cancellation cause', async (cause) => {
+    const harness = harnessWith({ FAKE_REASON_KIND: 'aborted', FAKE_ABORT_REASON_KIND: cause })
+    const result = await harness.run(`${cause}-abort`)
+    const end = result.events.findLast(event => event.type === 'turn/end')
+    expect(end?.data.reason).toEqual({ kind: 'aborted', reason: { kind: cause } })
   })
 
   it('accepts the complete hook cancellation cause', async () => {

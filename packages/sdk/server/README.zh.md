@@ -45,7 +45,7 @@ Stdout 只承载 JSON-RPC 帧，客户端可以逐字节解析；诊断信息应
 
 ### SDK 客户端可以做什么
 
-`initialize` 是运行时就绪边界：服务器由 Loader 组合挂载时，会等待当前插件树完成所有加载任务后再响应，因此首次提示词能够看到 MCP 初始工具发现等异步同级能力。握手返回协议稳定标识 `deepseek-harness-sdk-runtime`。服务器会通过所选适配器校验提供方／模型路由与可选的非空 `reasoningEffort`，再保存这些值；省略时不会保存推理强度，因此模型保留自身默认值。可选的正整数 `maxTokens` 会成为每个 SDK 创建的 agent 及其进程内后代的请求输出上限，省略时则应用所选适配器或提供方路由的默认值。JSON-RPC 请求可能并发分派，因此在一次 `initialize` 成功完成之前，`session/prompt` 会拒绝；客户端必须等待握手完成后再发送提示词。已接受的提示词会把一条带标识的用户消息排入队列，并立即返回 `{ messageId }`；服务器随后把每个持久事实作为 `session.event`、把整个 agent 生命周期的每次状态转换作为 `session.status` 流式发出。它不会把某条助手消息或 `turn/end` 归属于某个提示词，同一会话上的独立请求可以继续排入更多工作。持久化根目录与 persona 来自外围组合。
+`initialize` 是运行时就绪边界：服务器由 Loader 组合挂载时，会等待当前插件树完成所有加载任务后再响应，因此首次提示词能够看到 MCP 初始工具发现等异步同级能力。握手返回协议稳定标识 `deepseek-harness-sdk-runtime`。服务器会通过所选适配器校验提供方／模型路由与可选的非空 `reasoningEffort`，再保存这些值；省略时不会保存推理强度，因此模型保留自身默认值。可选的正整数 `maxTokens` 会成为每个 SDK 创建的 agent 及其进程内后代的请求输出上限，省略时则应用所选适配器或提供方路由的默认值。JSON-RPC 请求可能并发分派，因此会话操作会在一次 `initialize` 成功完成之前拒绝；客户端必须等待握手完成后再发送。`session/prompt` 排入一条带标识的下一轮次消息，`session/steer` 则排入一条带标识的下一步骤消息；两者均立即返回 `{ messageId }`。`session/cancel` 只为实时运行中的会话请求用户协作式取消，并返回请求是否获接受，且不会创建未知会话。服务器随后把每个持久事实作为 `session.event`、把整个 agent 生命周期的每次状态转换作为 `session.status` 流式发出。它不会把某条助手消息或 `turn/end` 归属于单个输入，同一会话上的独立请求可以继续排入更多工作。持久化根目录与 persona 来自外围组合。
 
 ### 关闭与退出
 
@@ -75,7 +75,7 @@ Stdout 只承载 JSON-RPC 帧，客户端可以逐字节解析；诊断信息应
 
 ### 请求流程
 
-每个协议方法在行动前都会校验输入并解析其拥有的状态——`initialize` 保存 SDK 路由，`session/prompt` 解析存活的 agent+会话对并排入消息，`shutdown` 在刷新响应并以 0 退出前把服务器持有的状态 dispose 到完全停稳——共享退出任务确保竞争的 shutdown 请求绝不会重复 dispose 或退出。分发逻辑位于 [src/index.ts](src/index.ts) 与 [src/server.ts](src/server.ts)。
+每个协议方法在行动前都会校验输入并解析其拥有的状态——`initialize` 保存 SDK 路由，提示词与 steering 会先解析存活的 agent+会话对再排入消息，取消会观察运行中的 agent 而不创建会话，`shutdown` 则在刷新响应并以 0 退出前把服务器持有的状态 dispose 到完全停稳——共享退出任务确保竞争的 shutdown 请求绝不会重复 dispose 或退出。分发逻辑位于 [src/index.ts](src/index.ts) 与 [src/server.ts](src/server.ts)。
 
 ### 清理
 
@@ -105,7 +105,7 @@ Stdout 只承载 JSON-RPC 帧，客户端可以逐字节解析；诊断信息应
 
 #### 模型看到什么
 
-对于每个已接受的 `session/prompt`，文本和持久内容引用会原样进入一条用户消息。内联 `SdkEncodedImageBlock` 会先通过组合中的附件存储完成校验与提交，因此会话日志保留内容寻址的图片引用而不是 base64 字节。此包不会添加系统提示词文本或工具 schema；这些内容来自组合中的其他插件。
+对于每个已接受的 `session/prompt` 或 `session/steer`，文本和持久内容引用会原样进入一条用户消息。内联 `SdkEncodedImageBlock` 会先通过组合中的附件存储完成校验与提交，因此会话日志保留内容寻址的图片引用而不是 base64 字节。此包不会添加系统提示词文本或工具 schema；这些内容来自组合中的其他插件。
 
 #### Token 影响
 
@@ -122,7 +122,8 @@ Stdout 只承载 JSON-RPC 帧，客户端可以逐字节解析；诊断信息应
 
 这些限制说明本插件何时需要特别的运维注意。它们是当前包约束，不是与其他服务方式的对比或任务积压。
 
-- **协议没有逐会话关闭或提示词取消方法**——SDK 创建的 agent 会一直存活到进程关闭。
+- **协议没有逐会话关闭方法**——SDK 创建的 agent 会一直存活到进程关闭。
+- **取消获接受不等于完成**——收到 `{ accepted: true }` 后，客户端必须观察通知流才能获知完全停稳。
 - **没有逐提示词结果**——`MessageId` 只标识 inbox 准入；拥有自动化活动区间的客户端必须自行定义并观察该区间。
 - **stdout 纯净性由部署保证**——外围配置仍可能加载 stdout logger 并破坏 JSON-RPC 通道；此插件不会检查或否决同级 logger。
 - **自动挂载适配器仅支持 DeepSeek**——`initialize` 可以复用任何预先注册的模型适配器，但唯一的回退行为是挂载 DeepSeek 适配器。

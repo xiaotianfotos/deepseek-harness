@@ -23,6 +23,21 @@ function run(env: NodeJS.ProcessEnv, ...args: string[]) {
 }
 
 describe('Python runtime executable builder CLI', () => {
+  it('can stop after materializing the Node runtime carrier', () => {
+    const result = run(
+      { npm_execpath: 'C:\\tools\\pnpm.cjs' },
+      '--skip-build',
+      '--dry-run',
+      '--node-only',
+      '--targets=node24-linux-x64',
+    )
+
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain('--filter dsh-python-runtime-closure deploy')
+    expect(result.stdout).toContain('build-exe-for-python-sdk: node carrier:')
+    expect(result.stdout).not.toContain('dlx @yao-pkg/pkg')
+  })
+
   it('runs pnpm through its JavaScript entrypoint without a command shell', () => {
     const result = run(
       { npm_execpath: 'C:\\tools\\pnpm.cjs' },

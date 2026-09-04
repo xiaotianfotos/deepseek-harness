@@ -10,7 +10,7 @@ import { resolve } from 'node:path'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { Agent, AgentHandle } from '@deepseek-ai/dsh-agent'
 import { admitEncodedImages, type EncodedImageAttachment, type ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
-import { createUserMessage, ReasoningEffortId, type ContentBlock, type LlmRuntime } from '@deepseek-ai/dsh-llm'
+import { createUserMessage, ReasoningEffortId, type ContentBlock, type LlmRuntime, type UserMessage } from '@deepseek-ai/dsh-llm'
 import { carrierKeyOf, type Scoped } from '@deepseek-ai/dsh-scope'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type SubagentRuntime from '@deepseek-ai/dsh-subagent'
@@ -20,9 +20,13 @@ import type {
   InitializeParams,
   InitializeResult,
   JsonRpcTransportPeer,
+  SessionCancelParams,
+  SessionCancelResult,
   SessionEventNotification,
   SessionPromptParams,
   SessionPromptResult,
+  SessionSteerParams,
+  SessionSteerResult,
   SdkEncodedImageBlock,
   SubagentFinishedNotification,
   SubagentStartedNotification,
@@ -40,7 +44,7 @@ async function durablePromptContent(ctx: Context, blocks: SessionPromptParams['c
   const images = blocks.filter(encodedImage)
   if (images.length === 0) return blocks as ContentBlock[]
   const attachments = ctx.get('attachments')
-  if (attachments === undefined) throw new Error('SDK image prompt requires an attachment store')
+  if (attachments === undefined) throw new Error('SDK image input requires an attachment store')
   const refs = await admitEncodedImages(attachments, images.map((image): EncodedImageAttachment => ({
     data: image.data,
     mediaType: image.mimeType,
@@ -174,6 +178,14 @@ export class HarnessSdkJsonRpcServer {
    * @returns the durable message identity.
    */
   async prompt(params: SessionPromptParams): Promise<SessionPromptResult> {
+    return this.enqueueUserMessage(params, (agent, message) => { agent.followup(message) })
+  }
+
+  /** Admit and deliver one durable user message through the requested inbox operation. */
+  private async enqueueUserMessage(
+    params: SessionPromptParams,
+    deliver: (agent: Agent, message: UserMessage) => void,
+  ): Promise<SessionPromptResult> {
     if (!this.initialized) throw new Error('SDK server is not initialized')
     const rec = await this.getOrCreateSession(params.sessionId)
     // An agent-loop-only reload disposes the loop's agents while this record
@@ -188,8 +200,35 @@ export class HarnessSdkJsonRpcServer {
       content,
       source: { kind: 'user' },
     })
-    rec.handle.agent.followup(message)
+    deliver(rec.handle.agent, message)
     return { messageId: message.id }
+  }
+
+  /**
+   * Queue one identified user message for the nearest later step and wake the agent.
+   * @param params - target session and user content.
+   * @returns the durable message identity.
+   */
+  async steer(params: SessionSteerParams): Promise<SessionSteerResult> {
+    return this.enqueueUserMessage(params, (agent, message) => { agent.steer(message) })
+  }
+
+  /**
+   * Request cooperative cancellation of one active session turn. Unknown and
+   * idle sessions return an unaccepted receipt without creating work.
+   * @param params - target session.
+   * @returns whether a running agent accepted the cancellation request.
+   */
+  async cancel(params: SessionCancelParams): Promise<SessionCancelResult> {
+    if (!this.initialized) throw new Error('SDK server is not initialized')
+    if (this.shuttingDown) throw new Error('SDK server is shutting down')
+    const pending = this.sessionCreations.get(params.sessionId)
+    const rec = this.sessions.get(params.sessionId) ?? (pending === undefined ? undefined : await pending)
+    if (rec === undefined) return { accepted: false }
+    this.assertLiveAgent(rec, params.sessionId)
+    if (rec.handle.agent.status !== 'running') return { accepted: false }
+    rec.handle.agent.cancel({ kind: 'user' })
+    return { accepted: true }
   }
 
   private assertLiveAgent(rec: SessionRecord, sessionId: string): void {
@@ -249,6 +288,10 @@ export class HarnessSdkJsonRpcServer {
         return this.initialize(params as unknown as InitializeParams)
       case 'session/prompt':
         return this.prompt(params as unknown as SessionPromptParams)
+      case 'session/steer':
+        return this.steer(params as unknown as SessionSteerParams)
+      case 'session/cancel':
+        return this.cancel(params as unknown as SessionCancelParams)
       case 'shutdown':
         return this.shutdown()
       default:

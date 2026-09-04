@@ -136,6 +136,16 @@ class Session:
         self.harness = harness
         self.id = session_id
 
+    def steer(self, input: str | list[JsonObject]) -> str:
+        """Queue an interjection for the nearest later step and return its message id."""
+        self.harness.start()
+        return self.harness.client.session_steer(self.id, normalize_input(input))
+
+    def cancel(self) -> bool:
+        """Request cooperative cancellation of this session's active turn."""
+        self.harness.start()
+        return self.harness.client.session_cancel(self.id)
+
     def run(
         self,
         input: str | list[JsonObject],

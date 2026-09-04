@@ -114,6 +114,59 @@ async function settleSubagent(
 }
 
 describe('HarnessSdkJsonRpcServer', () => {
+  it('steers live sessions and cancels only running work', async () => {
+    const creation = Promise.withResolvers<AgentHandle>()
+    const steer = vi.fn<Agent['steer']>()
+    const cancel = vi.fn<Agent['cancel']>()
+    let status: Agent['status'] = 'running'
+    let live = true
+    const agent = ({
+      id: SessionId('controlled'),
+      steer,
+      cancel,
+      get status() { return status },
+    } satisfies Pick<Agent, 'id' | 'steer' | 'cancel' | 'status'>) as unknown as Agent
+    const handle = { agent, dispose: vi.fn(() => Promise.resolve()) }
+    const create = vi.fn(() => creation.promise)
+    const ctx = {
+      on: vi.fn(() => () => undefined),
+      agents: { create, get: () => live ? agent : undefined },
+      get: () => undefined,
+    } as unknown as Context
+    const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport())
+
+    await expect(server.handleRequest('session/steer', {
+      sessionId: 'controlled', contentBlocks: [{ type: 'text', text: 'too early' }],
+    })).rejects.toThrow('SDK server is not initialized')
+    await expect(server.handleRequest('session/cancel', { sessionId: 'controlled' }))
+      .rejects.toThrow('SDK server is not initialized')
+    ;(server as unknown as { initialized: boolean }).initialized = true
+    await expect(server.cancel({ sessionId: 'missing' })).resolves.toEqual({ accepted: false })
+
+    const steering = server.handleRequest('session/steer', {
+      sessionId: 'controlled', contentBlocks: [{ type: 'text', text: 'change direction' }],
+    })
+    await vi.waitFor(() => { expect(create).toHaveBeenCalledOnce() })
+    const cancellingCreation = server.handleRequest('session/cancel', { sessionId: 'controlled' })
+    creation.resolve(handle)
+
+    expect(typeof (await steering as { messageId: unknown }).messageId).toBe('string')
+    await expect(cancellingCreation).resolves.toEqual({ accepted: true })
+    expect(steer).toHaveBeenCalledWith(expect.objectContaining({
+      content: [{ type: 'text', text: 'change direction' }],
+    }))
+    expect(cancel).toHaveBeenCalledWith({ kind: 'user' })
+
+    status = 'idle'
+    await expect(server.cancel({ sessionId: 'controlled' })).resolves.toEqual({ accepted: false })
+    live = false
+    await expect(server.cancel({ sessionId: 'controlled' }))
+      .rejects.toThrow('session agent was disposed outside the server: controlled')
+
+    await server.shutdown()
+    await expect(server.cancel({ sessionId: 'controlled' })).rejects.toThrow('SDK server is shutting down')
+  })
+
   it('creates a harness agent and calls the configured OpenAI-compatible endpoint', { timeout: 15_000 }, async () => {
     const storageDir = await mkdtemp(join(tmpdir(), 'dsh-jsonrpc-'))
     const llmServer = await mockCompletionServer()
@@ -276,7 +329,7 @@ describe('HarnessSdkJsonRpcServer', () => {
     await expect(server.prompt({
       sessionId: 'image',
       contentBlocks: [{ type: 'image', data: 'AQ==', mimeType: 'image/png' }],
-    })).rejects.toThrow('SDK image prompt requires an attachment store')
+    })).rejects.toThrow('SDK image input requires an attachment store')
     expect(followup).not.toHaveBeenCalled()
     await server.shutdown()
   })

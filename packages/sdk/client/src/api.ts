@@ -167,6 +167,26 @@ export class HarnessSession {
   constructor(readonly harness: DeepSeekHarness, readonly id: string) {}
 
   /**
+   * Queue one interjection for the nearest later step. A running agent consumes
+   * it in the current turn; an idle agent opens a turn for it.
+   * @param input - steering text or content blocks.
+   * @returns the durable message identity.
+   */
+  async steer(input: string | SdkPromptContentBlock[]): Promise<string> {
+    await this.harness.start()
+    return this.harness.client.steer(this.id, normalizeInput(input))
+  }
+
+  /**
+   * Request cooperative cancellation of this session's active turn.
+   * @returns whether the runtime found a running session and requested cancellation.
+   */
+  async cancel(): Promise<boolean> {
+    await this.harness.start()
+    return this.harness.client.cancel(this.id)
+  }
+
+  /**
    * Queue one prompt, then observe the whole session through its next idle.
    * @param input - prompt text, or content blocks sent verbatim.
    * @param options - optional per-notification observer.

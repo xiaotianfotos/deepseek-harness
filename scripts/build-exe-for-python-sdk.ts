@@ -157,6 +157,8 @@ class BuildCli {
     readonly skipBuild: boolean,
     /** Print every command and config patch instead of executing. */
     readonly dryRun: boolean,
+    /** Stop after materializing the Node deploy closure; do not build platform executables. */
+    readonly nodeOnly: boolean,
   ) {}
 
   /**
@@ -190,7 +192,7 @@ class BuildCli {
       }
       seen.add(key)
     }
-    return new BuildCli(targets, values['skip-build'], values['dry-run'])
+    return new BuildCli(targets, values['skip-build'], values['dry-run'], values['node-only'])
   }
 
   private static parseRaw(argv: string[]) {
@@ -200,6 +202,7 @@ class BuildCli {
         'targets': { type: 'string' },
         'skip-build': { type: 'boolean', default: false },
         'dry-run': { type: 'boolean', default: false },
+        'node-only': { type: 'boolean', default: false },
         'help': { type: 'boolean', default: false },
       },
     }).values
@@ -213,6 +216,7 @@ class BuildCli {
       '                         Default: the host platform only (on node24).',
       '  --skip-build           skip `pnpm run build` (lib/ artifacts must already exist).',
       '  --dry-run              print every command and config patch without executing.',
+      '  --node-only             materialize the Node deploy closure without building platform executables.',
       '  --help                 print this help.',
       '',
       `Build route: ${PKG_SPEC} --sea; see .agents/notes/implemented/architecture/2026-07-10-single-file-executable-sdk-runtime-distribution.md.`,
@@ -616,6 +620,10 @@ async function main(): Promise<void> {
   await pipeline.build()
   await pipeline.deployStaging()
   await pipeline.injectPkgConfig()
+  if (cli.nodeOnly) {
+    console.log(`build-exe-for-python-sdk: node carrier: ${pipeline.staging}`)
+    return
+  }
   const products: string[] = []
   for (const target of cli.targets) products.push(...await pipeline.pack(target))
   pipeline.printProducts(products)

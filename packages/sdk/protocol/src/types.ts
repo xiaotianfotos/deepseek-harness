@@ -1,5 +1,5 @@
 /**
- * Named wire types for the DeepSeek Harness SDK runtime protocol: the three
+ * Named wire types for the DeepSeek Harness SDK runtime protocol: the five
  * request/result pairs and the four server-to-client notification payloads
  * exchanged over the newline-delimited JSON-RPC stdio transport. The server
  * plugin (`@deepseek-ai/dsh-sdk-jsonrpc-server`) and SDK clients share these shapes;
@@ -56,6 +56,32 @@ export type SdkPromptContentBlock = ContentBlock | SdkEncodedImageBlock
 export interface SessionPromptResult {
   /** Identity of the queued user message. */
   messageId: string
+}
+
+/** One same-turn user interjection on an SDK session. */
+export interface SessionSteerParams {
+  /** The SDK-side session id; an unknown id lazily creates the agent+session pair. */
+  sessionId: string
+  /** The steering content blocks, admitted through the same durable path as prompt content. */
+  contentBlocks: SdkPromptContentBlock[]
+}
+
+/** Durable enqueue receipt for one same-turn interjection. */
+export interface SessionSteerResult {
+  /** Identity of the queued user message. */
+  messageId: string
+}
+
+/** Parameters for cooperatively cancelling one active SDK session turn. */
+export interface SessionCancelParams {
+  /** The SDK-side session id. Unknown and idle sessions are not accepted. */
+  sessionId: string
+}
+
+/** Immediate admission result for a cancellation request. */
+export interface SessionCancelResult {
+  /** Whether the server found a running session and requested cancellation. */
+  accepted: boolean
 }
 
 /** Deployment-mapped SDK outcome: `ok` for an accepted result, `error` otherwise. */
@@ -115,5 +141,7 @@ export interface HarnessSdkNotificationMap {
 export interface HarnessSdkRequestMap {
   'initialize': { params: InitializeParams; result: InitializeResult }
   'session/prompt': { params: SessionPromptParams; result: SessionPromptResult }
+  'session/steer': { params: SessionSteerParams; result: SessionSteerResult }
+  'session/cancel': { params: SessionCancelParams; result: SessionCancelResult }
   'shutdown': { params: undefined; result: Record<string, never> }
 }
